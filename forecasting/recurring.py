@@ -1,7 +1,6 @@
 import pandas as pd
 
-GRACE_DAYS = 3      # design choice: how many days late before we call an event "overdue"
-N_RECENT = 3        # design choice: how many recent amounts to look at
+from forecasting.config import GRACE_DAYS, N_RECENT
 
 
 def get_events(transactions, category, amount_col):
@@ -11,7 +10,7 @@ def get_events(transactions, category, amount_col):
     return ev[["transaction_date", amount_col]].rename(columns={amount_col: "amount"})
 
 
-def expected_next(events, today):
+def expected_next(events, today, amount_rule="min"):
     """Predict the next occurrence of a recurring event, and say whether it is overdue."""
     today = pd.Timestamp(today)
     last_date = events["transaction_date"].iloc[-1]
@@ -20,8 +19,9 @@ def expected_next(events, today):
     day = min(int(events["transaction_date"].dt.day.median()), 28)   # 28 avoids short-month errors
     next_date = (last_date + pd.offsets.MonthBegin(1)).replace(day=day)
 
-    # HOW MUCH: the LOWEST of the recent amounts (conservative design choice for income)
-    amount = float(events["amount"].tail(N_RECENT).min())
+    # HOW MUCH: be conservative. Income -> lowest recent amount. Expenses -> highest.
+    recent = events["amount"].tail(N_RECENT)
+    amount = float(recent.min() if amount_rule == "min" else recent.max())
 
     # IS IT LATE?
     status = "overdue" if today > next_date + pd.Timedelta(days=GRACE_DAYS) else "expected"
